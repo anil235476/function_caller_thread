@@ -5,48 +5,72 @@
 #include <mutex>
 #include <condition_variable>
 #include <chrono>
+#include <atomic>
+#include <optional>
 
 class function_caller_thread {
+	using Func = std::function<void()>;
 public:
 	void start() {
 		is_run_thread_ = true;
 		run();
 	}
 
-	void add_function(std::function<void()>&& f) {
+	void add_function(Func&& f) {
 
 		{
 			std::lock_guard<std::mutex> lck_{ queue_lck_ };
 			queue_.push(move(f));
 
 		}
-		cv_.notify_all();
+		{
+			std::lock_guard<std::mutex> lck_{ cv_lck_ };
+			cv_.notify_all();
+		}
+		
 		
 	}
 
 	void exit_thread() {
 		is_run_thread_ = false;
-		//cv_.notify_all();
+		cv_.notify_all();
 	}
 
 
 private:
 	void run() {
 		while (is_run_thread_) {
-			std::unique_lock<std::mutex> lck_{ queue_lck_ };
-			if (queue_.empty()) {
-				cv_.wait_for(lck_, std::chrono::seconds(3));
+			auto f = get_function();
+			if (!f.has_value()) {
+				//get event mutex
+				std::unique_lock<std::mutex> lc_{ cv_lck_ };
+				f = get_function();
+				if (!f.has_value()) {
+					cv_.wait(lc_);
+					continue;
+				}
+					
 			}
-			else {
-				queue_.front()();
-				queue_.pop();
-			}
+
+		  (*f)();
+			
 		}
 	}
 
-	std::queue < std::function<void()>> queue_;
+	std::optional<Func> get_function() {
+		std::lock_guard<std::mutex> lck_{ queue_lck_ };
+		if (queue_.empty())
+			return std::optional<Func>{};
+		std::optional<Func>  r{ queue_.front() };
+		queue_.pop();
+		return r;
+
+	}
+
+	std::queue<Func> queue_;
 	std::mutex queue_lck_;
-	bool is_run_thread_{ false };
+	std::atomic_bool is_run_thread_{ false };
+	std::mutex cv_lck_;
 	std::condition_variable cv_;
 };
 
