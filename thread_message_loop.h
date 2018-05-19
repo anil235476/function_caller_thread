@@ -5,6 +5,7 @@
 #include <atomic>
 #include <optional>
 #include <condition_variable>
+#include <functional>
 
 template<class MessageID>
 class thread_message_loop {
@@ -13,7 +14,7 @@ private:
 		MessageID id_;
 		void* data_;//todo: type safeity issue. check if language support now anything.
 	};
-	
+
 	std::queue<_node> message_queue_;
 	std::mutex queue_lck_;
 
@@ -24,20 +25,24 @@ private:
 
 public:
 	~thread_message_loop() { stop(); }
-	template<typename Caller, typename Fun>
-	void run(Caller* caller, Fun f) {
+	template<typename Fun, typename ...Args>
+	void run(Fun&& f, Args... args) {
 		while (run_message_) {
-		   auto m =	get_next_message();
-		   if (!m.has_value()) {
-			   //acquire event mutex
-			   std::unique_lock<std::mutex> l{ cv_lck_ };
-			   m = get_next_message();
-			   if (!m.has_value()) {
-				   cv_.wait(l);
-				   continue;
-			   }
-		   }
-		   (caller->*f)(m->id_, m->data_);
+			auto m = get_next_message();
+			if (!m.has_value()) {
+				//acquire event mutex
+				std::unique_lock<std::mutex> l{ cv_lck_ };
+				m = get_next_message();
+				if (!m.has_value()) {
+					cv_.wait(l);
+					continue;
+				}
+			}
+			if constexpr(sizeof...(args) > 0)
+				std::invoke(f, args..., m->id_, m->data_);
+			else
+				std::invoke(f, m->id_, m->data_);
+
 		}
 	}
 
@@ -73,5 +78,6 @@ private:
 
 
 void test();
+void test2();
 
 #endif//__THREAD_MESSAGE_LOOP_H_
