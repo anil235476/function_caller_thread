@@ -7,6 +7,8 @@ add_executable(test_program
    thread_message_loop.h
    thread_message_loop.cpp
    main.cpp
+   msg_loop_libraray.h
+   test_msg_loop_lib.cpp
    )
 
  if(MSVC)
