@@ -18,18 +18,25 @@ private:
 	std::mutex cv_lck_;
 
 	std::atomic_bool run_thread_{ true };
-	
+	std::function<void(Message)> clean_up_;
 
 public:
 	~thread_msg_lib() {
-		stop();
+		stop(clean_up_);
 		//todo: it should wait here for thread to stop running
 	}
 	
+	template<typename CleanUp>
+	void stop(CleanUp clean_up) {
+		clean_up_ = clean_up;
+		run_thread_ = false;
+		notify();
+	}
 
 
-	template<typename Func >
-	void run(Func run_condition) {
+
+	template<typename Callback, typename Func >
+	void run(Callback callback, Func run_condition) {
 		while (run_condition() && run_thread_) {
 			auto m = get_next_message();
 			if (!m.has_value()) {
@@ -42,13 +49,17 @@ public:
 				}
 			}
 
-			handle_msg(*m);
+			callback(*m);
 		}
 		clear_queue();
 	}
+	template<typename Callback>
+	void run(Callback callback) {
+		run(callback, []() {return true; });
+	}
 
 	void run() {
-		run([]() {return true; });
+		run(handle_msg);
 	}
 
 	void push_message(Message msg) {
@@ -80,15 +91,15 @@ private:
 	void clear_queue() {
 		//clean up messaging
 		//came out of loop clean the message
-		for (auto msg = get_next_message(); msg.has_value();) {
-			cleanup(*msg);
+		if (clean_up_) {
+			for (auto msg = get_next_message(); msg.has_value();) {
+				clean_up_(*msg);
+			}
 		}
+		
 	}
 
-	void stop() {
-		run_thread_ = false;
-		notify();
-	}
+	
 };
 
 void test_msg_loop_lib();
