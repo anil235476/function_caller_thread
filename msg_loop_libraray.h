@@ -92,7 +92,9 @@ private:
 		//clean up messaging
 		//came out of loop clean the message
 		if (clean_up_) {
-			for (auto msg = get_next_message(); msg.has_value();) {
+			for (auto msg = get_next_message();
+				msg.has_value();
+				msg = get_next_message()) {
 				clean_up_(*msg);
 			}
 		}
